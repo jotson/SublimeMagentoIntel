@@ -35,7 +35,7 @@ class MagentoComplete(sublime_plugin.EventListener):
     '''
 
     def on_query_completions(self, view, prefix, locations):
-        data = []
+        data = None
 
         point = view.sel()[0].a
         if point > 2:
@@ -43,7 +43,10 @@ class MagentoComplete(sublime_plugin.EventListener):
             if view.substr(region) == '->':
                 data = self.find_completions(view)
 
-        return (data, sublime.INHIBIT_EXPLICIT_COMPLETIONS | sublime.INHIBIT_WORD_COMPLETIONS)
+        if data:
+            return (data, sublime.INHIBIT_EXPLICIT_COMPLETIONS | sublime.INHIBIT_WORD_COMPLETIONS)
+        else:
+            return False
 
     def find_completions(self, view):
         data = []
@@ -113,8 +116,14 @@ class MagentoComplete(sublime_plugin.EventListener):
         className = None
         token = token.strip()
         if token.startswith('$this'):
-            className = re.findall('class (.*)', view.substr(sublime.Region(0, view.size())))[0]
-            className.replace('{', '').strip()
+            found = re.findall('class (.*) extends .*', view.substr(sublime.Region(0, view.size())))
+            if not found:
+                found = re.findall('class (.*) implements .*', view.substr(sublime.Region(0, view.size())))
+            if not found:
+                found = re.findall('class (.*)', view.substr(sublime.Region(0, view.size())))
+            if found:
+                className = found[0]
+                className.replace('{', '').strip()
 
         elif token.startswith('$'):
             searchtext = token.replace('$', '\$')
