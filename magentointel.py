@@ -82,7 +82,7 @@ class MagentoComplete(sublime_plugin.EventListener):
             return data
 
         '''Scan source for functions'''
-        functions = self.scan_file(path)
+        functions = self.scan_file(file=path, all=token.startswith('$this'))
         if not functions:
             return data
 
@@ -110,39 +110,38 @@ class MagentoComplete(sublime_plugin.EventListener):
         If the token is a Magento factory class, then convert those to Mage_*
             class names.
         '''
-        className = ''
+        className = None
         token = token.strip()
-        if token.startswith('$'):
+        if token.startswith('$this'):
+            className = re.findall('class (.*)', view.substr(sublime.Region(0, view.size())))[0]
+            className.replace('{', '').strip()
+
+        elif token.startswith('$'):
             searchtext = token.replace('$', '\$')
             searchtext = searchtext.replace('(', '\(')
             searchtext = searchtext.replace(')', '\)')
             searchtext += ' .* '
             found = view.find('@var ' + searchtext, 0)
-            if not found:
-                return None
+            if found:
+                definition = view.substr(found).strip()
+                className = definition.split(' ')[2]
 
-            definition = view.substr(found).strip()
-            className = definition.split(' ')[2]
-            if not className:
-                return None
         elif token.startswith('Mage::getModel') or token.startswith('Mage::getSingleton'):
             key = re.findall("\('(.*)'\)", token)
             (module, theclass) = key[0].split('/')
             className = 'Mage_{m}_Model_{c}'.format(m=cap_first_letter(module), c=cap_first_letter(theclass))
-            pass
+
         elif token.startswith('Mage::helper'):
             key = re.findall("\('(.*)'\)", token)
             module = key[0]
             className = 'Mage_{m}_Helper_Data'.format(m=cap_first_letter(module))
-            pass
 
         elif token.startswith('Mage::app'):
             className = 'Mage'
-            pass
 
         return className
 
-    def scan_file(self, file):
+    def scan_file(self, file, all=False):
         '''
         Find @var, @param, PHP docs, and function definitions in a file.
 
@@ -151,9 +150,12 @@ class MagentoComplete(sublime_plugin.EventListener):
         retval = {}
 
         source = open(file, 'r').read()
-        functions = re.findall('public function (.*?)\((.*)\)', source)
-        functions.extend(re.findall('\s\sfunction (.*?)\((.*)\)', source))
-        functions.extend(re.findall('public static function (.*?)\((.*)\)', source))
+        if all:
+            functions = re.findall('function (.*?)\((.*)\)', source)
+        else:
+            functions = re.findall('public function (.*?)\((.*)\)', source)
+            functions.extend(re.findall('\s\sfunction (.*?)\((.*)\)', source))
+            functions.extend(re.findall('public static function (.*?)\((.*)\)', source))
         for parts in functions:
             name, allargs = parts
             name = name.strip()
