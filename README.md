@@ -25,13 +25,8 @@ Auto complete by pressing `Ctrl/Cmd+space` immediately following ->. Select one 
 
 This is all done dynamically so nothing needs to be scanned before the system starts working. And it's quite fast because it only has to stat a few files on each invocation.
 
-It also includes a handy function for opening the source file for any class: _magento_open_. Search the command palette for Magento or bind it to a key. For example:
-
-    [
-        {"keys": ["ctrl+shift+o"], "command": "magento_open" },
-    ]
-
-The command is only active within Magento projects.
+It also includes a handy function for opening the source file for any class.
+Place the cusor on a class name and press `Ctrl+f5` (Linux/Win) or `Cmd+f5` (OSX). The command is only active within Magento projects.
 
 # Limitations
 

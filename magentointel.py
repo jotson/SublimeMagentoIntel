@@ -271,17 +271,31 @@ class MagentoComplete(sublime_plugin.EventListener):
 class MagentoOpenCommand(sublime_plugin.WindowCommand):
     def run(self):
         view = self.window.active_view()
-        className = view.substr(view.sel()[0])
+        className = view.substr(expand_word(view, view.sel()[0]))
         path = None
         if className:
             path = MagentoComplete.build_magento_path(MagentoComplete(), className)
         if path:
-            self.window.open_file(path)
+            self.window.open_file(path, sublime.TRANSIENT)
         else:
             sublime.status_message('Select a class name first')
 
     def is_enabled(self):
         return is_magento()
+
+
+def expand_word(view, region):
+    '''
+    Expand the region to hold the entire word it is within
+    '''
+    start = region.a
+    end = region.b
+    while re.match('[\w|_]', view.substr(start - 1)):
+        start -= 1
+    while re.match('[\w|_]', view.substr(end)):
+        end += 1
+
+    return sublime.Region(start, end)
 
 
 def cap_first_letter(word):
