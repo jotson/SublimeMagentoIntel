@@ -22,7 +22,7 @@ It also understands some Magento factories:
     Mage::helper('sales')->{auto complete}
 
 
-Auto complete by pressing `Ctrl/Cmd+space` immediately following ->. Select one of the choices and you'll even get parameters you can tab through.
+Auto complete by pressing `Ctrl/Cmd+space` immediately following `->`. Select one of the choices and you'll even get parameters you can tab through.
 
 This is all done dynamically so nothing needs to be scanned before the system starts working. But it's still reasonably fast because it only has to scan a few files on each invocation.
 
@@ -37,7 +37,7 @@ This plugin requires a command-line version of PHP on your path. It runs PHP's b
 
 - This should be considered an early alpha.
 - You must be using a project and the root of your project must contain the Magento app folder.
-- It only understands _@var $var type_, _@returns type@, and _@var type_ hints and doesn't walk the inheritance tree.
+- It only understands _@var $var type_, _@returns type_, and _@var type_ hints and doesn't walk the inheritance tree.
 - It uses a naive algorithm for deciding what the class name is for factory methods like Mage::getModel() and Mage::helper(). It does not inspect Magento config.xml files.
 
 Despite all that, it can still be quite handy. Please send pull requests.
