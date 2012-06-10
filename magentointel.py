@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 '''
 MagentoIntel plugin for Sublime Text 2
 Copyright 2012 John Watson <https://github.com/jotson>
@@ -25,6 +27,11 @@ import os
 import re
 import glob
 import copy
+import json
+import codecs
+import subprocess
+import hashlib
+#import cProfile, pstats
 import sublime
 import sublime_plugin
 
@@ -40,7 +47,8 @@ class MagentoComplete(sublime_plugin.EventListener):
         point = view.sel()[0].a
         if point > 2:
             region = sublime.Region(point - 2, point)
-            if view.substr(region) == '->':
+            if view.substr(region) == '->' or view.substr(region) == '::':
+                #cProfile.runctx('data = self.find_completions(view)', globals(), locals())
                 data = self.find_completions(view)
 
         if data:
@@ -48,64 +56,257 @@ class MagentoComplete(sublime_plugin.EventListener):
         else:
             return False
 
-    def find_completions(self, view):
-        data = []
+    def get_cache_folder(self):
+        for f in sublime.active_window().folders():
+            folder = f
+            break
 
+        if f:
+            folder = os.path.join(f, '.magentointel-cache')
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+
+            return folder
+
+        return None
+
+    def get_all_tokens(self, code=None, cache=True):
+        '''
+        Use the command-line PHP interpreter to tokenize the code
+        '''
+        if cache:
+            m = hashlib.md5()
+            m.update(code)
+            key = m.hexdigest()
+            cachefile = os.path.join(self.get_cache_folder(), key)
+            if os.path.exists(cachefile):
+                tokens = json.loads(codecs.open(cachefile, encoding='utf-8', mode='r').read())
+                return tokens
+
+        # This code is a performance bottleneck. Caching helps but there's still a significant delay
+        # because the first call to get_all_tokens with the partial code up to the cursor can't be
+        # cached.
+        code = code.replace("'", "\\'")
+        php = u"echo json_encode(token_get_all('{code}'));".format(code=code)
+        tokens = subprocess.Popen(['php', '-r', php], bufsize=1, stdout=subprocess.PIPE, shell=False).communicate()[0]
+        tokens = json.loads(tokens)
+
+        if cache and cachefile:
+            codecs.open(cachefile, encoding='utf-8', mode='w').write(json.dumps(tokens))
+
+        return tokens
+
+    def token(self, token):
+        '''
+        Parse the raw token data into a more consistent form
+        '''
+        if type(token).__name__ == 'list':
+            kind = token[0]
+            stmt = token[1]
+        else:
+            kind = 0
+            stmt = token
+
+        return kind, stmt
+
+    def get_class(self, tokens):
+        '''
+        Get the first class definition
+        '''
+        className = None
+        capture_next = False
+        for token in tokens:
+            kind, stmt = self.token(token)
+
+            if kind == 353:
+                # class
+                capture_next = True
+            elif kind == 307 and capture_next:
+                className = stmt
+                break
+
+        return className
+
+    def get_parent_class(self, tokens):
+        '''
+        Get the class that the first class definition extends
+        '''
+        className = None
+        capture_next = False
+        for token in tokens:
+            kind, stmt = self.token(token)
+
+            if kind == 355:
+                # extends
+                capture_next = True
+            elif kind == 307 and capture_next:
+                className = stmt
+                break
+
+        return className
+
+    def get_return_class(self, tokens, searchToken):
+        '''
+        Search tokens for token and return its type.
+
+        When the token is found, return its @var or @return hint
+        '''
+        className = None
+        nest = 0
+        for token in tokens:
+            kind, stmt = self.token(token)
+            if kind == 307 and stmt == searchToken and nest == 1:
+                break
+            if stmt == '{':
+                nest += 1
+            if stmt == '}':
+                nest -= 1
+                if nest == 1:
+                    className = ''
+            if kind == 0 and stmt == ';' and nest == 1:
+                className = ''
+            elif kind == 367 and nest == 1:
+                className = re.findall('@var (.*)', stmt)
+                if not className:
+                    className = re.findall('@return (.*)', stmt)
+                if className:
+                    className = className[0].strip()
+
+        print searchToken, 'returns', className
+        return className
+
+    def find_completions(self, view):
         '''
         Scan files for completions for the current context
         '''
 
+        data = []
+
         '''Get token to be completed'''
         point = view.sel()[0].a
-        tokens = view.substr(sublime.Region(point - 1000, point))
-        tokens = re.split('->|\n|\r|\t| ', tokens)
-        tokens = tokens[:len(tokens) - 1]
+        code = view.substr(sublime.Region(0, point))
+        tokens = self.get_all_tokens(code=code, cache=False)
+
+        '''
+        Convert the token to a class name.
+
+        First, read the list backwards until we get to an enclosing block or
+        the previous statement.
+        Then create a new token list from that point and iterate forward.
+            Get a class name and parse that file for definitions.
+                The very first token should be a variable or static class name.
+            The next token could be -> or ::.
+            Then the next token should be a method name or class member.
+            Find the return type or member type.
+            Repeat.
+        '''
+        tokens.reverse()
+        nest = 0
+        end = 0
+        for t in tokens:
+            kind, stmt = self.token(t)
+
+            if kind == 0 and stmt == '(':
+                nest += 1
+            if kind == 0 and stmt == ')':
+                nest -= 1
+            if kind == 0 and stmt == ';':
+                break
+            if kind == 0 and (stmt == '{' or stmt == '}'):
+                break
+            if nest > 0:
+                break
+            end += 1
+
+        tokens = tokens[:end]
         tokens.reverse()
 
         className = None
+        nest = 0
+        lastToken = None
+        lastClass = None
+        code = view.substr(sublime.Region(0, view.size()))
         for token in tokens:
-            '''Convert the token to a class name'''
             if token:
-                if token.find(';') >= 0:
-                    '''
-                    Stop at ANY semicolon. This is a bad tokenizer in need of help.
-                    '''
-                    break
+                kind, stmt = self.token(token)
 
-                className = self.convert_token(view, token)
-                if className:
-                    break
+                thistoken = [kind, stmt]
 
-        if not className:
-            return data
+                if kind == 371:
+                    # white space
+                    pass
+                elif kind == 309 and nest == 0:
+                    # variable
+                    lastToken = thistoken
+                elif kind == 307 and nest == 0:
+                    # string (method or class name)
+                    if stmt == 'getModel' or stmt == 'getSingleton' or stmt == 'helper':
+                        factory = stmt
+                    lastToken = thistoken
+                elif kind == 0 and stmt == '(':
+                    nest += 1
+                elif kind == 0 and stmt == ')':
+                    nest -= 1
+                elif kind == 315 and factory:
+                    lastToken = [307, 'Mage::{factory}({path})'.format(factory=factory, path=stmt)]
+                    factory = None
+                elif kind == 357 and nest == 0:
+                    # object operator ->
+                    className = self.convert_token(view, code, lastToken[1])
+                    if not className:
+                        data = []
+                elif kind == 376 and nest == 0:
+                    # double colon ::
+                    className = self.convert_token(view, code, lastToken[1])
+                    if not className:
+                        className = lastToken[1]
 
-        '''Build path to source class'''
-        path = self.build_magento_path(className)
-        if not path:
-            return data
+                if not className:
+                    continue
 
-        '''Scan source for functions'''
-        functions = self.scan_file(file=path, all=token.startswith('$this'))
-        if not functions:
-            return data
+                if className == lastClass:
+                    continue
+                else:
+                    data = []
 
-        '''Return snippets'''
-        for f in functions.keys():
-            name = f
-            i = 1
-            args = []
-            for a in functions[f]:
-                a = a.replace('$', '\$')
-                args.append('${' + str(i) + ':' + a + '}')
-                i += 1
+                    lastClass = className
 
-            snippet = '{name}({args})'.format(name=name, args=', '.join(args))
+                    '''Build path to source class'''
+                    path = self.build_magento_path(className)
+                    if not path:
+                        return data
 
-            data.append(tuple([f + '\t' + className, snippet]))
+                    '''Scan source for functions'''
+                    if kind == 376 or lastToken[1] == 'self' or lastToken[1] == 'parent':
+                        context = 'static'
+                    elif lastToken[1].startswith('$this'):
+                        context = 'private'
+                    else:
+                        context = 'public'
+                    symbols, code = self.scan_file(file=path, context=context)
+                    if not symbols:
+                        return data
+
+                    '''Return snippets'''
+                    for f in symbols.keys():
+                        name = f
+                        i = 1
+                        args = []
+                        if symbols[f]['kind'] == 'function':
+                            for a in symbols[f]['args']:
+                                a = a.replace('$', '\$')
+                                args.append('${' + str(i) + ':' + a + '}')
+                                i += 1
+
+                            snippet = '{name}({args})'.format(name=name, args=', '.join(args))
+                        else:
+                            snippet = f
+
+                        data.append(tuple([f + '\t' + className, snippet]))
 
         return sorted(data)
 
-    def convert_token(self, view, token):
+    def convert_token(self, view, code, token):
         '''
         Given a token, convert it into a Magento class name.
 
@@ -115,15 +316,14 @@ class MagentoComplete(sublime_plugin.EventListener):
         '''
         className = None
         token = token.strip()
-        if token.startswith('$this'):
-            found = re.findall('class (.*) extends .*', view.substr(sublime.Region(0, view.size())))
-            if not found:
-                found = re.findall('class (.*) implements .*', view.substr(sublime.Region(0, view.size())))
-            if not found:
-                found = re.findall('class (.*)', view.substr(sublime.Region(0, view.size())))
-            if found:
-                className = found[0]
-                className.replace('{', '').strip()
+
+        if token.startswith('$this') or token == 'self':
+            tokens = self.get_all_tokens(code)
+            className = self.get_class(tokens)
+
+        elif token == 'parent':
+            tokens = self.get_all_tokens(code)
+            className = self.get_parent_class(tokens)
 
         elif token.startswith('$'):
             searchtext = token.replace('$', '\$')
@@ -138,19 +338,27 @@ class MagentoComplete(sublime_plugin.EventListener):
         elif token.startswith('Mage::getModel') or token.startswith('Mage::getSingleton'):
             key = re.findall("\('(.*)'\)", token)
             (module, theclass) = key[0].split('/')
-            className = 'Mage_{m}_Model_{c}'.format(m=cap_first_letter(module), c=cap_first_letter(theclass))
+            className = 'Mage_{m}_Model_'.format(m=cap_first_letter(module))
+            classes = []
+            for t in theclass.split('_'):
+                classes.append(cap_first_letter(t))
+            className += '_'.join(classes)
 
         elif token.startswith('Mage::helper'):
             key = re.findall("\('(.*)'\)", token)
             module = key[0]
             className = 'Mage_{m}_Helper_Data'.format(m=cap_first_letter(module))
 
-        elif token.startswith('Mage::app'):
+        elif token == 'Mage':
             className = 'Mage'
+
+        else:
+            tokens = self.get_all_tokens(code)
+            className = self.get_return_class(tokens, token)
 
         return className
 
-    def scan_file(self, file, all=False):
+    def scan_file(self, file, context='public'):
         '''
         Find @var, @param, PHP docs, and function definitions in a file.
 
@@ -158,30 +366,52 @@ class MagentoComplete(sublime_plugin.EventListener):
         '''
         retval = {}
 
-        source = open(file, 'r').read()
-        if all:
-            functions = re.findall('function (.*?)\((.*)\)', source)
-        else:
-            functions = re.findall('public function (.*?)\((.*)\)', source)
-            functions.extend(re.findall('\s\sfunction (.*?)\((.*)\)', source))
-            functions.extend(re.findall('public static function (.*?)\((.*)\)', source))
-        for parts in functions:
-            name, allargs = parts
+        source = codecs.open(file, encoding='utf-8', mode='r').read()
+        if context == 'private':
+            symbols = re.findall('(function \w*?)\((.*)\)', source)
+            symbols.extend(re.findall('public (\$\w*).*;', source))
+            symbols.extend(re.findall('protected (\$\w*).*;', source))
+            symbols.extend(re.findall('private (\$\w*).*;', source))
+        elif context == 'static':
+            symbols = re.findall('public static (function \w*?)\((.*)\)', source)
+            symbols.extend(re.findall('(const \w*)=.*;', source))
+            symbols.extend(re.findall('public static (\$\w*).*;', source))
+        elif context == 'public':
+            symbols = re.findall('public (function \w*?)\((.*)\)', source)
+            symbols.extend(re.findall('\s\s(function \w*?)\((.*)\)', source))
+            symbols.extend(re.findall('public (\$\w*).*;', source))
+
+        for parts in symbols:
+            kind = ''
+            returnType = ''
+            if parts[0].startswith('function'):
+                name = parts[0].split(' ')[1]
+                allargs = parts[1]
+                kind = 'function'
+            elif parts.startswith('const'):
+                name = parts.split(' ')[1]
+                allargs = ''
+                kind = 'constant'
+            elif parts.startswith('$'):
+                name = parts
+                allargs = ''
+                kind = 'variable'
             name = name.strip()
             args = []
-            for a in allargs.split(','):
-                a = a.strip()
-                t = a.split('=')
-                if len(t) > 1:
-                    a = t[0].strip()
-                t = a.split(' ')
-                if len(t) == 1:
-                    args.append(t[0].strip())
-                else:
-                    args.append(t[1].strip())
-            retval[name] = args
+            if kind == 'function':
+                for a in allargs.split(','):
+                    a = a.strip()
+                    t = a.split('=')
+                    if len(t) > 1:
+                        a = t[0].strip()
+                    t = a.split(' ')
+                    if len(t) == 1:
+                        args.append(t[0].strip())
+                    else:
+                        args.append(t[1].strip())
+            retval[name] = {'kind': kind, 'args': args, 'returnType': returnType}
 
-        return retval
+        return retval, source
 
     def build_magento_path(self, className):
         '''
