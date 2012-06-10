@@ -74,6 +74,8 @@ class MagentoComplete(sublime_plugin.EventListener):
         '''
         Use the command-line PHP interpreter to tokenize the code
         '''
+        code = code.encode('utf-8')
+        
         if cache:
             m = hashlib.md5()
             m.update(code)
@@ -87,7 +89,7 @@ class MagentoComplete(sublime_plugin.EventListener):
         # because the first call to get_all_tokens with the partial code up to the cursor can't be
         # cached.
         code = code.replace("'", "\\'")
-        php = u"echo json_encode(token_get_all('{code}'));".format(code=code)
+        php = "echo json_encode(token_get_all('{code}'));".format(code=code)
         tokens = subprocess.Popen(['php', '-r', php], bufsize=1, stdout=subprocess.PIPE, shell=False).communicate()[0]
         tokens = json.loads(tokens)
 
