@@ -44,12 +44,13 @@ class MagentoComplete(sublime_plugin.EventListener):
     def on_query_completions(self, view, prefix, locations):
         data = None
 
-        point = view.sel()[0].a
-        if point > 2:
-            region = sublime.Region(point - 2, point)
-            if view.substr(region) == '->' or view.substr(region) == '::':
-                #cProfile.runctx('data = self.find_completions(view)', globals(), locals())
-                data = self.find_completions(view)
+        if is_magento():
+            point = view.sel()[0].a
+            if point > 2:
+                region = sublime.Region(point - 2, point)
+                if view.substr(region) == '->' or view.substr(region) == '::':
+                    #cProfile.runctx('data = self.find_completions(view)', globals(), locals())
+                    data = self.find_completions(view)
 
         if data:
             return (data, sublime.INHIBIT_EXPLICIT_COMPLETIONS | sublime.INHIBIT_WORD_COMPLETIONS)
