@@ -41,6 +41,9 @@ class MagentoComplete(sublime_plugin.EventListener):
     Magento auto-completer.
     '''
 
+    def __init__(self):
+        self.get_all_token_names()
+
     def on_query_completions(self, view, prefix, locations):
         data = None
 
@@ -99,15 +102,48 @@ class MagentoComplete(sublime_plugin.EventListener):
 
         return tokens
 
+    def get_all_token_names(self):
+        '''
+        Gets names for all token constants.
+
+        The token constants (http://us2.php.net/manual/en/tokens.php) values
+        aren't consistent between different versions of PHP. The values are
+        automatically generated based on PHP's underlying parser infrastructure.
+        This code generates a dictionary of token constants from the installed
+        version of PHP. The dictionary is later used to convert the token codes
+        returned by PHP's token_get_all() into names.
+        '''
+        self._constants = {}
+        self._constants[0] = None
+        php = ''
+        for i in range(0, 999):
+            php += "echo '{code},'.token_name({code}).'|';".format(code=i)
+        result = subprocess.Popen(['php', '-r', php], bufsize=1, stdout=subprocess.PIPE, shell=False).communicate()[0]
+        for constant in result.split('|'):
+            if constant.find(',') >= 0:
+                code, name = constant.split(',')
+                if name != 'UNKNOWN':
+                    self._constants[str(code)] = name
+
+    def get_token_name(self, code):
+        '''
+        Get name for a given token code.
+        '''
+        name = None
+        code = str(code)
+        if code in self._constants:
+            name = self._constants[code]
+        return name
+
     def token(self, token):
         '''
-        Parse the raw token data into a more consistent form
+        Parse the raw token data into a more consistent form.
         '''
         if type(token).__name__ == 'list':
-            kind = token[0]
+            kind = self.get_token_name(token[0])
             stmt = token[1]
         else:
-            kind = 0
+            kind = self.get_token_name(0)
             stmt = token
 
         return kind, stmt
@@ -121,10 +157,10 @@ class MagentoComplete(sublime_plugin.EventListener):
         for token in tokens:
             kind, stmt = self.token(token)
 
-            if kind == 353:
+            if kind == 'T_CLASS':
                 # class
                 capture_next = True
-            elif kind == 307 and capture_next:
+            elif kind == 'T_STRING' and capture_next:
                 className = stmt
                 break
 
@@ -139,10 +175,10 @@ class MagentoComplete(sublime_plugin.EventListener):
         for token in tokens:
             kind, stmt = self.token(token)
 
-            if kind == 355:
+            if kind == 'T_EXTENDS':
                 # extends
                 capture_next = True
-            elif kind == 307 and capture_next:
+            elif kind == 'T_STRING' and capture_next:
                 className = stmt
                 break
 
@@ -158,7 +194,7 @@ class MagentoComplete(sublime_plugin.EventListener):
         nest = 0
         for token in tokens:
             kind, stmt = self.token(token)
-            if kind == 307 and stmt == searchToken and nest == 1:
+            if kind == 'T_STRING' and stmt == searchToken and nest == 1:
                 break
             if stmt == '{':
                 nest += 1
@@ -166,9 +202,9 @@ class MagentoComplete(sublime_plugin.EventListener):
                 nest -= 1
                 if nest == 1:
                     className = ''
-            if kind == 0 and stmt == ';' and nest == 1:
+            if kind == None and stmt == ';' and nest == 1:
                 className = ''
-            elif kind == 367 and nest == 1:
+            elif kind == 'T_DOC_COMMENT' and nest == 1:
                 className = re.findall('@var (.*)', stmt)
                 if not className:
                     className = re.findall('@return (.*)', stmt)
@@ -209,13 +245,13 @@ class MagentoComplete(sublime_plugin.EventListener):
         for t in tokens:
             kind, stmt = self.token(t)
 
-            if kind == 0 and stmt == '(':
+            if kind == None and stmt == '(':
                 nest += 1
-            if kind == 0 and stmt == ')':
+            if kind == None and stmt == ')':
                 nest -= 1
-            if kind == 0 and stmt == ';':
+            if kind == None and stmt == ';':
                 break
-            if kind == 0 and (stmt == '{' or stmt == '}'):
+            if kind == None and (stmt == '{' or stmt == '}'):
                 break
             if nest > 0:
                 break
@@ -235,30 +271,30 @@ class MagentoComplete(sublime_plugin.EventListener):
 
                 thistoken = [kind, stmt]
 
-                if kind == 371:
+                if kind == 'T_WHITESPACE':
                     # white space
                     pass
-                elif kind == 309 and nest == 0:
+                elif kind == 'T_VARIABLE' and nest == 0:
                     # variable
                     lastToken = thistoken
-                elif kind == 307 and nest == 0:
+                elif kind == 'T_STRING' and nest == 0:
                     # string (method or class name)
                     if stmt == 'getModel' or stmt == 'getSingleton' or stmt == 'helper':
                         factory = stmt
                     lastToken = thistoken
-                elif kind == 0 and stmt == '(':
+                elif kind == None and stmt == '(':
                     nest += 1
-                elif kind == 0 and stmt == ')':
+                elif kind == None and stmt == ')':
                     nest -= 1
-                elif kind == 315 and factory:
-                    lastToken = [307, 'Mage::{factory}({path})'.format(factory=factory, path=stmt)]
+                elif kind == 'T_CONSTANT_ENCAPSED_STRING' and factory:
+                    lastToken = ['T_STRING', 'Mage::{factory}({path})'.format(factory=factory, path=stmt)]
                     factory = None
-                elif kind == 357 and nest == 0:
+                elif kind == 'T_OBJECT_OPERATOR' and nest == 0:
                     # object operator ->
                     className = self.convert_token(view, code, lastToken[1])
                     if not className:
                         data = []
-                elif kind == 376 and nest == 0:
+                elif kind == 'T_DOUBLE_COLON' and nest == 0:
                     # double colon ::
                     className = self.convert_token(view, code, lastToken[1])
                     if not className:
@@ -280,7 +316,7 @@ class MagentoComplete(sublime_plugin.EventListener):
                         return data
 
                     '''Scan source for functions'''
-                    if kind == 376 or lastToken[1] == 'self' or lastToken[1] == 'parent':
+                    if kind == 'T_DOUBLE_COLON' or lastToken[1] == 'self' or lastToken[1] == 'parent':
                         context = 'static'
                     elif lastToken[1].startswith('$this'):
                         context = 'private'
