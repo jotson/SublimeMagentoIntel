@@ -22,7 +22,7 @@ It also understands some Magento factories:
     Mage::helper('sales')->{auto complete}
 
 
-Auto complete by pressing `Ctrl/Cmd+space` immediately following `->`. Select one of the choices and you'll even get parameters you can tab through.
+Auto complete by pressing `Ctrl+space` or `Cmd+space` immediately following `->`. Select one of the choices and you'll even get parameters you can tab through.
 
 This is all done dynamically so nothing needs to be scanned before the system starts working. But it's still reasonably fast because it only has to scan a few files on each invocation.
 
