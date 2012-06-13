@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>SublimeMagentoIntel by jotson</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>SublimeMagentoIntel</h1>
+        <p>Magento auto-complete plugin for Sublime Text 2</p>
+        <p class="view"><a href="https://github.com/jotson/SublimeMagentoIntel">View the Project on GitHub <small>jotson/SublimeMagentoIntel</small></a></p>
+        <ul>
+          <li><a href="https://github.com/jotson/SublimeMagentoIntel/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/jotson/SublimeMagentoIntel/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/jotson/SublimeMagentoIntel">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <p>An auto-complete plugin for Magento.</p>
+
+<p>Given a type hint or a factory method, and based on an understanding of Magento class autoloading, the plugin will find the source file in the current project, scan it for function definitions, and add them to the auto complete popup.</p>
+
+<p>This allows you to complete in situations like this:</p>
+
+<pre><code>/* @var $v Mage_Catalog_Model_Product */
+$v-&gt;{auto complete}
+</code></pre>
+
+<p>and even:</p>
+
+<pre><code>Mage::getModel('catalog/product')
+    -&gt;load(100)
+    -&gt;{auto complete}
+</code></pre>
+
+<p>It also understands some Magento factories:</p>
+
+<pre><code>Mage::getModel('catalog/product')-&gt;{auto complete}
+Mage::getSingleton('catalog/product')-&gt;{auto complete}
+Mage::helper('sales')-&gt;{auto complete}
+</code></pre>
+
+<p>Auto complete by pressing <code>Ctrl+space</code> or <code>Cmd+space</code> immediately following <code>-&gt;</code>. Select one of the choices and you'll even get parameters you can tab through.</p>
+
+<p>This is all done dynamically so nothing needs to be scanned before the system starts working. But it's still reasonably fast because it only has to scan a few files on each invocation.</p>
+
+<p>It also includes a handy function for opening the source file for any class.
+Place the cusor on a class name and press <code>Ctrl+f5</code> (Linux/Win) or <code>Cmd+f5</code> (OSX). The command is only active within Magento projects.</p>
+
+<h1>Setup</h1>
+
+<p>This plugin requires a command-line version of PHP on your path. It runs PHP's built-in lexical scanner on PHP source files to create a JSON encoded string of tokens to parse.</p>
+
+<h1>Limitations</h1>
+
+<ul>
+<li>This should be considered an early alpha.</li>
+<li>You must be using a project and the root of your project must contain the Magento app folder.</li>
+<li>It only understands <em><a href="https://github.com/var" class="user-mention">@var</a> $var type</em>, <em>@returns type</em>, and <em><a href="https://github.com/var" class="user-mention">@var</a> type</em> hints and doesn't walk the inheritance tree.</li>
+<li>It uses a naive algorithm for deciding what the class name is for factory methods like Mage::getModel() and Mage::helper(). It does not inspect Magento config.xml files.</li>
+</ul><p>Despite all that, it can still be quite handy. Please send pull requests.</p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/jotson">jotson</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
