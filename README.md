@@ -1,3 +1,11 @@
+# IMPORTANT!
+
+***This plugin is no longer being developed.*** I've moved all of my efforts over to
+[SublimePHPIntel](https://github.com/jotson/SublimePHPIntel). The aim of that
+plugin is to replicate all of the functionality you see here and also make it
+general purpose for use with any other PHP framework.
+
+
 # Magento Intel
 
 An auto-complete plugin for Magento.
@@ -35,9 +43,10 @@ This plugin requires a command-line version of PHP on your path. It runs PHP's b
 
 # Limitations
 
+- No longer under development. Use [SublimePHPIntel](https://github.com/jotson/SublimePHPIntel) instead.
 - This should be considered an early alpha.
 - You must be using a project and the root of your project must contain the Magento app folder.
 - It only understands _@var $var type_, _@returns type_, and _@var type_ hints and doesn't walk the inheritance tree.
 - It uses a naive algorithm for deciding what the class name is for factory methods like Mage::getModel() and Mage::helper(). It does not inspect Magento config.xml files.
 
-Despite all that, it can still be quite handy. Please send pull requests.
+Despite all that, it can still be quite handy.
